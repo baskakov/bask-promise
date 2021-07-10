@@ -1,6 +1,6 @@
 export function repeat<T>(promiseFun: () => Promise<T>, times: number = 1, logger: (error: Error) => void): Promise<T> {
     return promiseFun().catch((error) => {
-        logger && logger(error);
+        if(logger) logger(error);
         if (times === 0) throw error;
         else if (times < 0) return repeat(promiseFun, times, logger);
         else return repeat(promiseFun, times - 1, logger);
