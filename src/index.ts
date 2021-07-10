@@ -1,4 +1,4 @@
-export function repeat<T>(promiseFun: () => Promise<T>, times: number = 1, logger: (error: Error) => void): Promise<T> {
+export function repeat<T>(promiseFun: () => Promise<T>, times: number = 1, logger?: (error: Error) => void): Promise<T> {
     return promiseFun().catch((error) => {
         if(logger) logger(error);
         if (times === 0) throw error;
@@ -7,17 +7,19 @@ export function repeat<T>(promiseFun: () => Promise<T>, times: number = 1, logge
     });
 }
 
-export function delay(milliseconds: number = 0): Promise<void> {
-    if (milliseconds > 0) return new Promise((resolve) => setTimeout(resolve, milliseconds));
+export function delay(milliseconds: number): Promise<void> {
+    if (milliseconds > 0) return new Promise((resolve) => setTimeout((resolve), milliseconds));
     else return Promise.resolve();
 }
 
-export function delayBefore<T>(promiseFun: () => Promise<T>, milliseconds: number = 0): Promise<T> {
+export function delayBefore<T>(promiseFun: () => Promise<T>, milliseconds: number): Promise<T> {
     return delay(milliseconds).then(promiseFun);
 }
 
-export function delayAfter<T>(promiseFun: () => Promise<T>, milliseconds: number = 0): Promise<T> {
-    return promiseFun().then((x) => delay(milliseconds).then(() => x));
+export async function delayAfter<T>(promise: Promise<T>, milliseconds: number): Promise<T> {
+    const result = await promise;
+    await delay(milliseconds);
+    return result;
 }
 
 export async function sequence<T>(promiseFuns: (() => Promise<T>)[]): Promise<T[]> {
