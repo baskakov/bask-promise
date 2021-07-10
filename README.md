@@ -84,3 +84,8 @@ Log every error
 ```js
 repeat(() => repeatThisPromiseIfFails(), 3, error => console.error(error));
 ```
+Delay after error
+```js
+const {repeat, delay} = require('bask-promises');
+repeat(() => repeatThisPromiseIfFails(), 3, error => delay(1000));
+```

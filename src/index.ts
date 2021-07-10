@@ -1,9 +1,9 @@
-export function repeat<T>(promiseFun: () => Promise<T>, times: number = 1, logger?: (error: Error) => void): Promise<T> {
-    return promiseFun().catch((error) => {
-        if(logger) logger(error);
+export function repeat<T>(promiseFun: () => Promise<T>, times: number = 1, onError?: (error: Error) => void): Promise<T> {
+    return promiseFun().catch(async (error) => {
+        if(onError) await onError(error);
         if (times === 0) throw error;
-        else if (times < 0) return repeat(promiseFun, times, logger);
-        else return repeat(promiseFun, times - 1, logger);
+        else if (times < 0) return repeat(promiseFun, times, onError);
+        else return repeat(promiseFun, times - 1, onError);
     });
 }
 
