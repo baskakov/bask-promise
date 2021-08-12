@@ -1,6 +1,10 @@
-export function repeat<T>(promiseFun: () => Promise<T>, times: number = 1, onError?: (error: Error) => void): Promise<T> {
+export function repeat<T>(
+    promiseFun: () => Promise<T>,
+    times: number = 1,
+    onError?: (error: Error) => void,
+): Promise<T> {
     return promiseFun().catch(async (error) => {
-        if(onError) await onError(error);
+        if (onError) await onError(error);
         if (times === 0) throw error;
         else if (times < 0) return repeat(promiseFun, times, onError);
         else return repeat(promiseFun, times - 1, onError);
@@ -8,7 +12,7 @@ export function repeat<T>(promiseFun: () => Promise<T>, times: number = 1, onErr
 }
 
 export function delay(milliseconds: number): Promise<void> {
-    if (milliseconds > 0) return new Promise((resolve) => setTimeout((resolve), milliseconds));
+    if (milliseconds > 0) return new Promise((resolve) => setTimeout(resolve, milliseconds));
     else return Promise.resolve();
 }
 
@@ -39,5 +43,5 @@ export default {
     delayAfter,
     delayBefore,
     sequence,
-    keySequence
-}
+    keySequence,
+};

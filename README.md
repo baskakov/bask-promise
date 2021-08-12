@@ -9,19 +9,19 @@ Set of common promise utilities, not available in basic node.js features
 ## Install
 
 ```sh
-npm i bask-promises --save
+npm i bask-promise --save
 ```
 
 Then import module in code:
 
 ```js
-const promises = require('bask-promises');
+const promises = require('bask-promise');
 promises.delay(100);
 ```
 
 Or
 ```js
-const {delay} = require('bask-promises');
+const {delay} = require('bask-promise');
 delay(100);
 ```
 
@@ -30,19 +30,19 @@ delay(100);
 
 Simple delay
 ```js
-const {delay} = require('bask-promises');
+const {delay} = require('bask-promise');
 delay(1000).then(() => console.log('Run after 1 second'));
 ```
 
 Delay after promise
 ```js
-const {delayAfter} = require('bask-promises');
+const {delayAfter} = require('bask-promise');
 delayAfter(Promose.resolve('1 second delay after'), 1000);
 ```
 
 Delay before promise
 ```js
-const {delayBefore} = require('bask-promises');
+const {delayBefore} = require('bask-promise');
 delayBefore(() => Promose.resolve('1 second delay before'), 1000);
 ```
 
@@ -50,7 +50,7 @@ delayBefore(() => Promose.resolve('1 second delay before'), 1000);
 
 Node.js have basic Promise.all function to run promises in parallel, but to run sequence you have to implement it yourself. This is a typical task for example when quering database or external services.
 ```js
-const {sequence} = require('bask-promises');
+const {sequence} = require('bask-promise');
 sequence([
         () => Promise.resolve('Query database 1'),
         () => Promise.resolve('Query database 2'),
@@ -60,7 +60,7 @@ sequence([
 If you have the same query function, but different arguments - use keySequence:
 
 ```js
-const {keySequence} = require('bask-promises');
+const {keySequence} = require('bask-promise');
 keySequence([1,2,3,4,5], key => queryDatabasePromise(key));
 ```
 
@@ -71,7 +71,7 @@ requests can fail. In that case you may want to repeat failed requests automatic
 
 Repeat up to 3 times (4 calls total):
 ```js
-const {repeat} = require('bask-promises');
+const {repeat} = require('bask-promise');
 repeat(() => repeatThisPromiseIfFails(), 3);
 ```
 
@@ -86,6 +86,6 @@ repeat(() => repeatThisPromiseIfFails(), 3, error => console.error(error));
 ```
 Delay after error
 ```js
-const {repeat, delay} = require('bask-promises');
+const {repeat, delay} = require('bask-promise');
 repeat(() => repeatThisPromiseIfFails(), 3, error => delay(1000));
 ```
