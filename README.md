@@ -37,13 +37,13 @@ delay(1000).then(() => console.log('Run after 1 second'));
 Delay after promise
 ```js
 const {delayAfter} = require('bask-promise');
-delayAfter(Promose.resolve('1 second delay after'), 1000);
+delayAfter(Promise.resolve('1 second delay after'), 1000);
 ```
 
 Delay before promise
 ```js
 const {delayBefore} = require('bask-promise');
-delayBefore(() => Promose.resolve('1 second delay before'), 1000);
+delayBefore(() => Promise.resolve('1 second delay before'), 1000);
 ```
 
 ## Sequence
