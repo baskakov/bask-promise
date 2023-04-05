@@ -1,3 +1,6 @@
+const util = require('util');
+const exec = util.promisify(require('child_process').exec);
+
 export function repeat<T>(
     promiseFun: () => Promise<T>,
     times: number = 1,
@@ -37,6 +40,34 @@ export function keySequence<K, T>(array: K[], promiseFun: (key: K) => Promise<T>
     return sequence(array.map((key) => () => promiseFun(key)));
 }
 
+export async function ls (path: string): Promise<string[]> {
+    let response: string[] = [];
+
+    if(path) {
+        const { stdout } = await exec(`ls ${path}`).catch((e: { message: string | string[]; }) => {
+            return {};
+        });
+
+        if(stdout) response = stdout.split('\n').filter((x: string) => x !== '');
+    }
+
+    return response;
+}
+
+export async function cat (path: string): Promise<string> {
+    let response: string = '';
+
+    if(path) {
+        const { stdout } = await exec(`cat ${path}`).catch((e: { message: string | string[]; }) => {
+            return {};
+        });
+
+        if(stdout) response = stdout;
+    }
+
+    return response;
+}
+
 export default {
     repeat,
     delay,
@@ -44,4 +75,6 @@ export default {
     delayBefore,
     sequence,
     keySequence,
+    ls,
+    cat
 };

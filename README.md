@@ -89,3 +89,13 @@ Delay after error
 const {repeat, delay} = require('bask-promise');
 repeat(() => repeatThisPromiseIfFails(), 3, error => delay(1000));
 ```
+
+## Linux commands
+In order not to constantly import libraries designed to interact with the linux console,
+the ability to call these commands without additional connections and parameters has been added to the package
+
+```js
+const {ls, cat} = require('bask-promise');
+ls('./');
+cat('./README.md')
+```
