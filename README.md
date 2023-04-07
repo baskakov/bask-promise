@@ -89,3 +89,21 @@ Delay after error
 const {repeat, delay} = require('bask-promise');
 repeat(() => repeatThisPromiseIfFails(), 3, error => delay(1000));
 ```
+
+## Promise resolve from outside
+
+If you need to create a promise instance, pass it somewhere, and resolve it later from outside, 
+you can use `deferred` function
+
+```js
+const {deferred} = require('bask-promise');
+const promise = deferred();
+
+//use or pass promise somewhere
+promise.then(() => null).catch(() => null);
+
+//then resolve promise
+promise.resolve(42);
+//or
+promise.reject(new Error("foo"));
+``` 

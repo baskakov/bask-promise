@@ -1,3 +1,5 @@
+import { deferred } from './deferred';
+
 export function repeat<T>(
     promiseFun: () => Promise<T>,
     times: number = 1,
@@ -44,4 +46,5 @@ export default {
     delayBefore,
     sequence,
     keySequence,
+    deferred,
 };
