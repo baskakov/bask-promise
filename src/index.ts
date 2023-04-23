@@ -39,6 +39,35 @@ export function keySequence<K, T>(array: K[], promiseFun: (key: K) => Promise<T>
     return sequence(array.map((key) => () => promiseFun(key)));
 }
 
+function randomTime(millisecondsTo: number, millisecondsFrom: number = 0): number {
+    return millisecondsFrom + (millisecondsTo - millisecondsFrom) * Math.random();
+}
+
+/**
+ * Random time period delay
+ * @param millisecondsTo - upper bound
+ * @param [millisecondsFrom=0] - lower bound
+ */
+export function random(millisecondsTo: number, millisecondsFrom: number = 0): Promise<void> {
+    return delay(randomTime(millisecondsTo, millisecondsFrom));
+}
+
+export function randomBefore<T>(
+    promiseFun: () => Promise<T>,
+    millisecondsTo: number,
+    millisecondsFrom: number = 0,
+): Promise<T> {
+    return delayBefore(promiseFun, randomTime(millisecondsTo, millisecondsFrom));
+}
+
+export async function randomAfter<T>(
+    promise: Promise<T>,
+    millisecondsTo: number,
+    millisecondsFrom: number = 0,
+): Promise<T> {
+    return delayAfter(promise, randomTime(millisecondsTo, millisecondsFrom));
+}
+
 export default {
     repeat,
     delay,
@@ -47,4 +76,7 @@ export default {
     sequence,
     keySequence,
     deferred,
+    random,
+    randomBefore,
+    randomAfter,
 };
