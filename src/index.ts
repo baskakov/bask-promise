@@ -28,6 +28,10 @@ export async function delayAfter<T>(promise: Promise<T>, milliseconds: number): 
     return result;
 }
 
+export function delayFun<T>(milliseconds: number): (argument: T) => Promise<T> {
+    return (x: T) => delay(milliseconds).then(() => x);
+}
+
 export async function sequence<T>(promiseFuns: (() => Promise<T>)[]): Promise<T[]> {
     return promiseFuns.reduce(
         (acc, promiseFun) => acc.then((result) => promiseFun().then((y) => result.concat([y]))),
@@ -73,6 +77,7 @@ export default {
     delay,
     delayAfter,
     delayBefore,
+    delayFun,
     sequence,
     keySequence,
     deferred,

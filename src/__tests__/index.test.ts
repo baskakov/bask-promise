@@ -68,6 +68,21 @@ describe('delay', () => {
         expect(spy).toHaveBeenCalled();
         expect(spy).toHaveBeenCalledWith(42);
     });
+
+    it('delay as a callback', async () => {
+        const spy = jest.fn();
+
+        Promise.resolve(42).then(controller.delayFun(50)).then(spy);
+
+        jest.advanceTimersByTime(10);
+        await waitPromisesFinish();
+        expect(spy).not.toHaveBeenCalled();
+
+        jest.advanceTimersByTime(100);
+        await waitPromisesFinish();
+        expect(spy).toHaveBeenCalled();
+        expect(spy).toHaveBeenCalledWith(42);
+    });
 });
 
 test('repeat', async () => {

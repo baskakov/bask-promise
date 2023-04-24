@@ -73,6 +73,14 @@ randomBefore(() => Promise.resolve('0...1 second delay before'), 1000);
 randomBefore(() => Promise.resolve('1...2 second delay before'), 2000, 1000);
 ```
 
+## Delay callback
+
+If you want to use delay as a callback inside then, you can use `delayFun(ms)`
+```js
+const {delayFun} = require('bask-promise');
+Promise.resolve("Delay for 1s in then after promise").then(delayFun(1000));
+```
+
 ## Sequence
 
 Node.js have basic Promise.all function to run promises in parallel, but to run sequence you have to implement it yourself. This is a typical task for example when quering database or external services.
