@@ -99,6 +99,19 @@ const {keySequence} = require('bask-promise');
 keySequence([1,2,3,4,5], key => queryDatabasePromise(key));
 ```
 
+If you want to mix sequence and parallel mode and define concurrency number - use concurrent.
+For concurrent <= 1 - this is sequence()
+For concurrent >= array length - this is Promise.all()
+```js
+const {concurrent} = require('bask-promise');
+concurrent(2, [
+        () => Promise.resolve('Query database 1 (first thread)'),
+        () => Promise.resolve('Query database 2 (second thread)'),
+        () => Promise.resolve('Query database 3 (first thread)'),
+        () => Promise.resolve('Query database 4 (second thread)')
+    ])
+```
+
 ## Repeat
 
 Sometimes you need to ensure request that is properly executed. But due to network connections, 

@@ -6,6 +6,7 @@ export declare function delayAfter<T>(promise: Promise<T>, milliseconds: number)
 export declare function delayFun<T>(milliseconds: number): (argument: T) => Promise<T>;
 export declare function sequence<T>(promiseFuns: (() => Promise<T>)[]): Promise<T[]>;
 export declare function keySequence<K, T>(array: K[], promiseFun: (key: K) => Promise<T>): Promise<T[]>;
+export declare function concurrent<T>(concurrency: number, promiseFuns: (() => Promise<T>)[]): Promise<T[]>;
 /**
  * Random time period delay
  * @param millisecondsTo - upper bound
@@ -26,5 +27,6 @@ declare const _default: {
     random: typeof random;
     randomBefore: typeof randomBefore;
     randomAfter: typeof randomAfter;
+    concurrent: typeof concurrent;
 };
 export default _default;

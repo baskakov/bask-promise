@@ -18,6 +18,188 @@ test('sequence', () => {
         .then((result) => expect(result).toStrictEqual([1, 2]));
 });
 
+describe('concurrent', () => {
+    it('run with concurrency', async () => {
+        const startSpy: number[] = [];
+        const finishSpy: number[] = [];
+        const spy = jest.fn();
+
+        const deferred = [controller.deferred(), controller.deferred(), controller.deferred(), controller.deferred()];
+        const promises = deferred.map((x) => x.promise);
+
+        controller
+            .concurrent<number>(
+                2,
+                promises.map((p, i) => async () => {
+                    startSpy.push(i);
+                    await promises[i];
+                    finishSpy.push(i);
+                    return i;
+                }),
+            )
+            .then(spy);
+
+        deferred[1].resolve(1);
+        expect(spy).not.toHaveBeenCalled();
+        await waitPromisesFinish();
+        deferred[0].resolve(0);
+        deferred[3].resolve(3);
+        await waitPromisesFinish();
+        expect(spy).not.toHaveBeenCalled();
+        deferred[2].resolve(2);
+        await waitPromisesFinish();
+        expect(spy).toHaveBeenCalled();
+
+        expect(spy).toHaveBeenCalledWith([0, 1, 2, 3]);
+        expect(startSpy).toStrictEqual([0, 1, 3, 2]);
+        expect(finishSpy).toStrictEqual([1, 0, 3, 2]);
+    });
+
+    it('run with first is the longest', async () => {
+        const startSpy: number[] = [];
+        const finishSpy: number[] = [];
+        const spy = jest.fn();
+
+        const deferred = [controller.deferred(), controller.deferred(), controller.deferred(), controller.deferred()];
+        const promises = deferred.map((x) => x.promise);
+
+        controller
+            .concurrent<number>(
+                2,
+                promises.map((p, i) => async () => {
+                    startSpy.push(i);
+                    await promises[i];
+                    finishSpy.push(i);
+                    return i;
+                }),
+            )
+            .then(spy);
+
+        deferred[1].resolve(1);
+        expect(spy).not.toHaveBeenCalled();
+        await waitPromisesFinish();
+        deferred[3].resolve(0);
+        deferred[0].resolve(3);
+        await waitPromisesFinish();
+        expect(spy).not.toHaveBeenCalled();
+        deferred[2].resolve(2);
+        await waitPromisesFinish();
+        expect(spy).toHaveBeenCalled();
+
+        expect(spy).toHaveBeenCalledWith([0, 1, 2, 3]);
+        expect(startSpy).toStrictEqual([0, 1, 3, 2]);
+        expect(finishSpy).toStrictEqual([1, 3, 0, 2]);
+    });
+
+    it('run with single thread', async () => {
+        const startSpy: number[] = [];
+        const finishSpy: number[] = [];
+        const spy = jest.fn();
+
+        const deferred = [controller.deferred(), controller.deferred(), controller.deferred(), controller.deferred()];
+        const promises = deferred.map((x) => x.promise);
+
+        controller
+            .concurrent<number>(
+                1,
+                promises.map((p, i) => async () => {
+                    startSpy.push(i);
+                    await promises[i];
+                    finishSpy.push(i);
+                    return i;
+                }),
+            )
+            .then(spy);
+
+        deferred[0].resolve(0);
+        expect(spy).not.toHaveBeenCalled();
+        await waitPromisesFinish();
+        deferred[1].resolve(1);
+        deferred[2].resolve(2);
+        await waitPromisesFinish();
+        expect(spy).not.toHaveBeenCalled();
+        deferred[3].resolve(3);
+        await waitPromisesFinish();
+        expect(spy).toHaveBeenCalled();
+
+        expect(spy).toHaveBeenCalledWith([0, 1, 2, 3]);
+        expect(startSpy).toStrictEqual([0, 1, 2, 3]);
+        expect(finishSpy).toStrictEqual([0, 1, 2, 3]);
+    });
+
+    it('run with single thread 2', async () => {
+        const startSpy: number[] = [];
+        const finishSpy: number[] = [];
+        const spy = jest.fn();
+
+        const deferred = [controller.deferred(), controller.deferred(), controller.deferred(), controller.deferred()];
+        const promises = deferred.map((x) => x.promise);
+
+        controller
+            .concurrent<number>(
+                1,
+                promises.map((p, i) => async () => {
+                    startSpy.push(i);
+                    await promises[i];
+                    finishSpy.push(i);
+                    return i;
+                }),
+            )
+            .then(spy);
+
+        deferred[3].resolve(3);
+        expect(spy).not.toHaveBeenCalled();
+        await waitPromisesFinish();
+        deferred[2].resolve(2);
+        deferred[1].resolve(1);
+        await waitPromisesFinish();
+        expect(spy).not.toHaveBeenCalled();
+        deferred[0].resolve(0);
+        await waitPromisesFinish();
+        expect(spy).toHaveBeenCalled();
+
+        expect(spy).toHaveBeenCalledWith([0, 1, 2, 3]);
+        expect(startSpy).toStrictEqual([0, 1, 2, 3]);
+        expect(finishSpy).toStrictEqual([0, 1, 2, 3]);
+    });
+
+    it('run with max threads', async () => {
+        const startSpy: number[] = [];
+        const finishSpy: number[] = [];
+        const spy = jest.fn();
+
+        const deferred = [controller.deferred(), controller.deferred(), controller.deferred(), controller.deferred()];
+        const promises = deferred.map((x) => x.promise);
+
+        controller
+            .concurrent<number>(
+                4,
+                promises.map((p, i) => async () => {
+                    startSpy.push(i);
+                    await promises[i];
+                    finishSpy.push(i);
+                    return i;
+                }),
+            )
+            .then(spy);
+
+        deferred[3].resolve(3);
+        expect(spy).not.toHaveBeenCalled();
+        await waitPromisesFinish();
+        deferred[2].resolve(2);
+        deferred[1].resolve(1);
+        await waitPromisesFinish();
+        expect(spy).not.toHaveBeenCalled();
+        deferred[0].resolve(0);
+        await waitPromisesFinish();
+        expect(spy).toHaveBeenCalled();
+
+        expect(spy).toHaveBeenCalledWith([0, 1, 2, 3]);
+        expect(startSpy).toStrictEqual([0, 1, 2, 3]);
+        expect(finishSpy).toStrictEqual([3, 2, 1, 0]);
+    });
+});
+
 test('keySequence', () => {
     return controller
         .keySequence([1, 2], (key) => Promise.resolve(key * 10))

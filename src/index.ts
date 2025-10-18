@@ -43,6 +43,20 @@ export function keySequence<K, T>(array: K[], promiseFun: (key: K) => Promise<T>
     return sequence(array.map((key) => () => promiseFun(key)));
 }
 
+export function concurrent<T>(concurrency: number, promiseFuns: (() => Promise<T>)[]): Promise<T[]> {
+    if (concurrency <= 1) return sequence(promiseFuns);
+    if (concurrency >= promiseFuns.length) return Promise.all(promiseFuns.map((fun) => fun()));
+
+    return Promise.all(
+        Array.from(new Array(concurrency), (_, i) => sequence(promiseFuns.filter((x, j) => j % concurrency === i))),
+    ).then((arrayOfArrays) =>
+        Array.from(
+            new Array(promiseFuns.length),
+            (_, i) => arrayOfArrays[i % concurrency][(i - (i % concurrency)) / concurrency],
+        ),
+    );
+}
+
 function randomTime(millisecondsTo: number, millisecondsFrom: number = 0): number {
     return millisecondsFrom + (millisecondsTo - millisecondsFrom) * Math.random();
 }
@@ -84,4 +98,5 @@ export default {
     random,
     randomBefore,
     randomAfter,
+    concurrent,
 };
