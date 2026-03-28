@@ -3,9 +3,14 @@
 Set of common promise utilities, not available in basic node.js features
 * Delay promise
 * Delay before or after promise
+* Wait until a minimum time has elapsed
+* Delay a rejection
 * Run promises in sequence, e.g. requests to database
 * Repeated failed promises
 * Repeated failed promises with exponential backoff
+* Timeout a promise
+* Race a promise against a guard promise
+* Deferred promise with state inspection
 
 ## Install
 
@@ -80,6 +85,48 @@ If you want to use delay as a callback inside then, you can use `delayFun(ms)`
 ```js
 import { delayFun } from 'bask-promise';
 Promise.resolve("Delay for 1s in then after promise").then(delayFun(1000));
+```
+
+## Delay till
+
+Waits until both the promise resolves **and** the minimum time has elapsed. Useful for avoiding UI flicker on fast operations — e.g. keeping a spinner visible for at least 500ms.
+
+```js
+import { delayTill } from 'bask-promise';
+
+// Resolves after at least 5000ms, even if fetchData() finishes in 1000ms
+delayTill(fetchData(), 5000);
+```
+
+If the promise takes longer than `milliseconds`, it resolves as soon as the promise does:
+```js
+// fetchData() takes 6000ms, milliseconds is 5000ms → resolves after 6000ms
+delayTill(fetchData(), 5000);
+```
+
+By default, errors are propagated immediately. Set `delayError: true` to also delay rejection:
+```js
+// If fetchData() fails early, the rejection is still held until 5000ms have passed
+delayTill(fetchData(), 5000, true);
+```
+
+## Delay throw
+
+Returns a `.catch`-compatible callback that delays a rejection by the given number of milliseconds before re-throwing. Useful as a building block or as an inline callback.
+
+```js
+import { delayThrow } from 'bask-promise';
+
+// Delays the rejection by 1 second before propagating it
+fetchData().catch(delayThrow(1000));
+```
+
+Combined with `delayTill`:
+```js
+import { delayTill, delayThrow } from 'bask-promise';
+
+// Equivalent to delayTill(fetchData(), 5000, true)
+delayTill(fetchData().catch(delayThrow(5000)), 5000);
 ```
 
 ## Sequence
@@ -175,13 +222,97 @@ you can use `deferred` function
 
 ```js
 import { deferred } from 'bask-promise';
-const promise = deferred();
+const d = deferred();
 
-//use or pass promise somewhere
-promise.then(() => null).catch(() => null);
+// use or pass promise somewhere
+d.promise.then(() => null).catch(() => null);
 
-//then resolve promise
-promise.resolve(42);
-//or
-promise.reject(new Error("foo"));
+// then resolve or reject from outside
+d.resolve(42);
+// or
+d.reject(new Error('foo'));
+```
+
+### Inspecting deferred state
+
+The deferred object exposes read-only properties to inspect its current state at any time:
+
+| Property | Type | Description |
+|---|---|---|
+| `isPending` | `boolean` | `true` until resolved or rejected |
+| `isResolved` | `boolean` | `true` after `resolve()` is called |
+| `isFailed` | `boolean` | `true` after `reject()` is called |
+| `value` | `T \| undefined` | The resolved value (available after the next microtask), `undefined` otherwise |
+| `error` | `unknown \| undefined` | The rejection reason, `undefined` otherwise |
+
+```js
+import { deferred } from 'bask-promise';
+const d = deferred();
+
+d.isPending;   // true
+d.isResolved;  // false
+d.isFailed;    // false
+d.value;       // undefined
+d.error;       // undefined
+
+d.resolve(42);
+
+d.isPending;   // false
+d.isResolved;  // true
+
+await Promise.resolve(); // wait one microtask tick
+d.value;       // 42
+```
+
+```js
+const d = deferred();
+d.reject(new Error('boom'));
+
+d.isPending;   // false
+d.isFailed;    // true
+d.error;       // Error: boom
+```
+
+## Timer
+
+Creates a promise that rejects after a given delay. Useful as a standalone building block or combined with `left`.
+
+```js
+import { timer } from 'bask-promise';
+
+// Rejects with default message after 1 second
+timer(1000);
+
+// Rejects with a custom message
+timer(1000, 'Operation took too long');
+```
+
+## Timeout
+
+Races a promise against a timer. Rejects with a timeout error if the promise does not settle within the given milliseconds.
+
+```js
+import { timeout } from 'bask-promise';
+
+// Rejects with "Timeout exceeded: 5000ms" if fetchData() takes longer than 5 seconds
+timeout(fetchData(), 5000);
+```
+
+## Left
+
+Races a promise against a guard promise. Resolves with the value of the primary promise, but rejects if the guard promise rejects — regardless of the primary promise state. The resolved value of the guard is ignored.
+
+```js
+import { left } from 'bask-promise';
+
+// Resolves with the result of primary(), but aborts if guard rejects
+left(primary(), guard());
+```
+
+A practical use case is combining `left` with `timer` to build a custom timeout with a specific error message:
+
+```js
+import { left, timer } from 'bask-promise';
+
+left(fetchData(), timer(5000, 'fetchData timed out'));
 ```

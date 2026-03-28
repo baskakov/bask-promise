@@ -46,6 +46,16 @@ export async function delayAfter<T>(promise: Promise<T>, milliseconds: number): 
     return result;
 }
 
+export function delayThrow(milliseconds: number): (e: unknown) => Promise<never> {
+    return (e) => delay(milliseconds).then(() => Promise.reject(e));
+}
+
+export async function delayTill<T>(promise: Promise<T>, milliseconds: number, delayError: boolean = false): Promise<T> {
+    return Promise.all([delayError ? promise.catch(delayThrow(milliseconds)) : promise, delay(milliseconds)]).then(
+        ([result]) => result,
+    );
+}
+
 export function delayFun<T>(milliseconds: number): (argument: T) => Promise<T> {
     return (x: T) => delay(milliseconds).then(() => x);
 }
@@ -104,12 +114,33 @@ export async function randomAfter<T>(
     return delayAfter(promise, randomTime(millisecondsTo, millisecondsFrom));
 }
 
+export function left<T>(primary: Promise<T>, guard: Promise<unknown>): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+        primary.then(resolve, reject);
+        guard.catch(reject);
+    });
+}
+
+export async function timer(
+    milliseconds: number,
+    message: string = `Timeout exceeded: ${milliseconds}ms`,
+): Promise<never> {
+    await delay(milliseconds);
+    throw new Error(message);
+}
+
+export function timeout<T>(promise: Promise<T>, milliseconds: number): Promise<T> {
+    return left(promise, timer(milliseconds));
+}
+
 export default {
     repeat,
     repeatExponential,
     delay,
     delayAfter,
     delayBefore,
+    delayTill,
+    delayThrow,
     delayFun,
     sequence,
     keySequence,
@@ -118,4 +149,7 @@ export default {
     randomBefore,
     randomAfter,
     concurrent,
+    timeout,
+    timer,
+    left,
 };

@@ -1,4 +1,4 @@
-import controller, { delay, repeatExponential } from '../index';
+import controller, { delay, repeatExponential, timeout, left, timer, delayTill, delayThrow } from '../index';
 
 function waitPromisesFinish() {
     return new Promise(jest.requireActual('timers').setImmediate);
@@ -234,6 +234,107 @@ describe('delay', () => {
         expect(spy).toHaveBeenCalledWith(42);
     });
 
+    it('delayTill resolves no earlier than the given milliseconds even if promise resolves faster', async () => {
+        const spy = jest.fn();
+        delayTill(Promise.resolve(42), 1000).then(spy);
+
+        await waitPromisesFinish();
+        expect(spy).not.toHaveBeenCalled();
+
+        jest.advanceTimersByTime(999);
+        await waitPromisesFinish();
+        expect(spy).not.toHaveBeenCalled();
+
+        jest.advanceTimersByTime(1);
+        await waitPromisesFinish();
+        expect(spy).toHaveBeenCalledWith(42);
+    });
+
+    it('delayTill resolves as soon as the promise resolves when it takes longer than milliseconds', async () => {
+        const spy = jest.fn();
+        const d = controller.deferred<number>();
+        delayTill(d.promise, 100).then(spy);
+
+        jest.advanceTimersByTime(100);
+        await waitPromisesFinish();
+        expect(spy).not.toHaveBeenCalled();
+
+        d.resolve(99);
+        await waitPromisesFinish();
+        expect(spy).toHaveBeenCalledWith(99);
+    });
+
+    it('delayTill rejects if the promise rejects', async () => {
+        const error = new Error('fail');
+        const resultPromise = delayTill(Promise.reject(error), 1000);
+        await expect(resultPromise).rejects.toThrow('fail');
+    });
+
+    it('delayTill with delayError=true delays rejection until milliseconds have passed', async () => {
+        const spy = jest.fn();
+        const error = new Error('fail');
+        delayTill(Promise.reject(error), 1000, true).catch(spy);
+
+        await waitPromisesFinish();
+        expect(spy).not.toHaveBeenCalled();
+
+        jest.advanceTimersByTime(999);
+        await waitPromisesFinish();
+        expect(spy).not.toHaveBeenCalled();
+
+        jest.advanceTimersByTime(1);
+        await waitPromisesFinish();
+        expect(spy).toHaveBeenCalledWith(error);
+    });
+
+    it('delayTill with delayError=false rejects immediately without waiting', async () => {
+        const spy = jest.fn();
+        const error = new Error('fail');
+        delayTill(Promise.reject(error), 1000, false).catch(spy);
+
+        await waitPromisesFinish();
+        expect(spy).toHaveBeenCalledWith(error);
+    });
+});
+
+describe('delayThrow', () => {
+    it('returns a function that rejects with the original error after the given delay', async () => {
+        const spy = jest.fn();
+        const error = new Error('boom');
+        Promise.reject(error).catch(delayThrow(1000)).catch(spy);
+
+        await waitPromisesFinish();
+        expect(spy).not.toHaveBeenCalled();
+
+        jest.advanceTimersByTime(1000);
+        await waitPromisesFinish();
+        expect(spy).toHaveBeenCalledWith(error);
+    });
+
+    it('preserves the original error value', async () => {
+        const spy = jest.fn();
+        const error = new Error('original');
+        Promise.reject(error).catch(delayThrow(100)).catch(spy);
+
+        await waitPromisesFinish();
+        jest.advanceTimersByTime(100);
+        await waitPromisesFinish();
+        expect(spy).toHaveBeenCalledWith(error);
+    });
+
+    it('is accessible via the default export', async () => {
+        const spy = jest.fn();
+        const error = new Error('test');
+        Promise.reject(error).catch(controller.delayThrow(500)).catch(spy);
+
+        await waitPromisesFinish();
+        jest.advanceTimersByTime(500);
+        await waitPromisesFinish();
+        expect(spy).toHaveBeenCalledWith(error);
+    });
+});
+
+describe('delay (before/fun)', () => {
     it('delay before promise fun', async () => {
         const spy = jest.fn();
         const beforeFun = jest.fn(() => Promise.resolve(42));
@@ -408,5 +509,87 @@ describe('repeatExponential', () => {
         expect(onError).toHaveBeenCalledTimes(1);
         expect(onError).toHaveBeenCalledWith(error);
         await expect(resultPromise).resolves.toBe(42);
+    });
+});
+
+describe('timeout', () => {
+    it('resolves with the promise value when resolved before timeout', async () => {
+        const resultPromise = timeout(Promise.resolve(42), 1000);
+        jest.advanceTimersByTime(500);
+        await expect(resultPromise).resolves.toBe(42);
+    });
+
+    it('rejects with a timeout error when promise does not resolve in time', async () => {
+        const never = new Promise<number>(() => {});
+        const resultPromise = timeout(never, 1000);
+        jest.advanceTimersByTime(1000);
+        await expect(resultPromise).rejects.toThrow('Timeout exceeded: 1000ms');
+    });
+
+    it('rejects with the original error when promise rejects before timeout', async () => {
+        const error = new Error('original error');
+        const resultPromise = timeout(Promise.reject(error), 1000);
+        await expect(resultPromise).rejects.toThrow('original error');
+    });
+
+    it('is accessible via the default export', async () => {
+        const resultPromise = controller.timeout(Promise.resolve('hello'), 1000);
+        await expect(resultPromise).resolves.toBe('hello');
+    });
+});
+
+describe('timer', () => {
+    it('rejects with the default message after the given delay', async () => {
+        const resultPromise = timer(1000);
+        jest.advanceTimersByTime(1000);
+        await expect(resultPromise).rejects.toThrow('Timeout exceeded: 1000ms');
+    });
+
+    it('rejects with a custom message when provided', async () => {
+        const resultPromise = timer(500, 'custom timeout message');
+        jest.advanceTimersByTime(500);
+        await expect(resultPromise).rejects.toThrow('custom timeout message');
+    });
+
+    it('does not reject before the delay elapses', async () => {
+        const spy = jest.fn();
+        timer(1000).catch(spy);
+        jest.advanceTimersByTime(999);
+        await Promise.resolve();
+        expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('is accessible via the default export', async () => {
+        const resultPromise = controller.timer(1000);
+        jest.advanceTimersByTime(1000);
+        await expect(resultPromise).rejects.toThrow('Timeout exceeded: 1000ms');
+    });
+});
+
+describe('left', () => {
+    it('resolves with the value of the primary promise', async () => {
+        await expect(left(Promise.resolve(42), Promise.resolve('ignored'))).resolves.toBe(42);
+    });
+
+    it('rejects when the primary promise rejects', async () => {
+        const error = new Error('primary error');
+        await expect(left(Promise.reject(error), Promise.resolve('ignored'))).rejects.toThrow('primary error');
+    });
+
+    it('rejects when the guard promise rejects', async () => {
+        const error = new Error('guard error');
+        const never = new Promise<number>(() => {});
+        await expect(left(never, Promise.reject(error))).rejects.toThrow('guard error');
+    });
+
+    it('resolves with the primary value even if the guard resolves later', async () => {
+        const { promise: guardPromise, resolve: resolveGuard } = controller.deferred<void>();
+        const resultPromise = left(Promise.resolve(99), guardPromise);
+        resolveGuard(undefined);
+        await expect(resultPromise).resolves.toBe(99);
+    });
+
+    it('is accessible via the default export', async () => {
+        await expect(controller.left(Promise.resolve('ok'), Promise.resolve(undefined))).resolves.toBe('ok');
     });
 });

@@ -10,6 +10,8 @@ export interface RepeatExponentialOptions<T> {
 export declare function repeatExponential<T>({ promiseFun, times, baseDelay, onError, }: RepeatExponentialOptions<T>): Promise<T>;
 export declare function delayBefore<T>(promiseFun: () => Promise<T>, milliseconds: number): Promise<T>;
 export declare function delayAfter<T>(promise: Promise<T>, milliseconds: number): Promise<T>;
+export declare function delayThrow(milliseconds: number): (e: unknown) => Promise<never>;
+export declare function delayTill<T>(promise: Promise<T>, milliseconds: number, delayError?: boolean): Promise<T>;
 export declare function delayFun<T>(milliseconds: number): (argument: T) => Promise<T>;
 export declare function sequence<T>(promiseFuns: (() => Promise<T>)[]): Promise<T[]>;
 export declare function keySequence<K, T>(array: K[], promiseFun: (key: K) => Promise<T>): Promise<T[]>;
@@ -22,12 +24,17 @@ export declare function concurrent<T>(concurrency: number, promiseFuns: (() => P
 export declare function random(millisecondsTo: number, millisecondsFrom?: number): Promise<void>;
 export declare function randomBefore<T>(promiseFun: () => Promise<T>, millisecondsTo: number, millisecondsFrom?: number): Promise<T>;
 export declare function randomAfter<T>(promise: Promise<T>, millisecondsTo: number, millisecondsFrom?: number): Promise<T>;
+export declare function left<T>(primary: Promise<T>, guard: Promise<unknown>): Promise<T>;
+export declare function timer(milliseconds: number, message?: string): Promise<never>;
+export declare function timeout<T>(promise: Promise<T>, milliseconds: number): Promise<T>;
 declare const _default: {
     repeat: typeof repeat;
     repeatExponential: typeof repeatExponential;
     delay: typeof delay;
     delayAfter: typeof delayAfter;
     delayBefore: typeof delayBefore;
+    delayTill: typeof delayTill;
+    delayThrow: typeof delayThrow;
     delayFun: typeof delayFun;
     sequence: typeof sequence;
     keySequence: typeof keySequence;
@@ -36,5 +43,8 @@ declare const _default: {
     randomBefore: typeof randomBefore;
     randomAfter: typeof randomAfter;
     concurrent: typeof concurrent;
+    timeout: typeof timeout;
+    timer: typeof timer;
+    left: typeof left;
 };
 export default _default;
