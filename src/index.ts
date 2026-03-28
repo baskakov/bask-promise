@@ -18,6 +18,24 @@ export function delay(milliseconds: number): Promise<void> {
     else return Promise.resolve();
 }
 
+export interface RepeatExponentialOptions<T> {
+    promiseFun: () => Promise<T>;
+    times?: number;
+    baseDelay?: number;
+    onError?: (error: Error) => void;
+}
+
+export function repeatExponential<T>({
+    promiseFun,
+    times = 10,
+    baseDelay = 100,
+    onError,
+}: RepeatExponentialOptions<T>): Promise<T> {
+    let attempt = 0;
+    const withDelay = () => delay(baseDelay * Math.pow(2, attempt++)).then(promiseFun);
+    return repeat(withDelay, times, onError);
+}
+
 export function delayBefore<T>(promiseFun: () => Promise<T>, milliseconds: number): Promise<T> {
     return delay(milliseconds).then(promiseFun);
 }
@@ -88,6 +106,7 @@ export async function randomAfter<T>(
 
 export default {
     repeat,
+    repeatExponential,
     delay,
     delayAfter,
     delayBefore,

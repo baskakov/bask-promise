@@ -5,6 +5,7 @@ Set of common promise utilities, not available in basic node.js features
 * Delay before or after promise
 * Run promises in sequence, e.g. requests to database
 * Repeated failed promises
+* Repeated failed promises with exponential backoff
 
 ## Install
 
@@ -136,6 +137,35 @@ Delay after error
 ```js
 import { repeat, delay } from 'bask-promise';
 repeat(() => repeatThisPromiseIfFails(), 3, error => delay(1000));
+```
+
+## Repeat with exponential backoff
+
+Like `repeat`, but automatically adds an increasing delay between retries. The delay doubles after each failed attempt: `baseDelay * 2^attempt`.
+
+Repeat up to 3 times with default 100ms base delay (delays: 100ms, 200ms, 400ms):
+```js
+import { repeatExponential } from 'bask-promise';
+repeatExponential({ promiseFun: () => repeatThisIfFails(), times: 3 });
+```
+
+Custom base delay:
+```js
+repeatExponential({ promiseFun: () => repeatThisIfFails(), times: 5, baseDelay: 200 });
+```
+
+Repeat until success:
+```js
+repeatExponential({ promiseFun: () => repeatThisIfFails(), times: -1 });
+```
+
+Log every error:
+```js
+repeatExponential({
+    promiseFun: () => repeatThisIfFails(),
+    times: 3,
+    onError: error => console.error(error),
+});
 ```
 
 ## Promise resolve from outside
