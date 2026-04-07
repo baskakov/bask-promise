@@ -1,4 +1,13 @@
-import controller, { delay, repeatExponential, timeout, left, timer, delayTill, delayThrow } from '../index';
+import controller, {
+    delay,
+    repeatExponential,
+    timeout,
+    left,
+    timer,
+    delayTill,
+    delayThrow,
+    exponential,
+} from '../index';
 
 function waitPromisesFinish() {
     return new Promise(jest.requireActual('timers').setImmediate);
@@ -368,20 +377,471 @@ describe('delay (before/fun)', () => {
     });
 });
 
-test('repeat', async () => {
-    let count = 0;
-    const spy = jest.fn();
-    async function tester() {
-        spy();
-        if (count === 3) return 42;
-        else {
-            count += 1;
-            throw new Error('fail');
+describe('repeat', () => {
+    it('retries until success with positional arguments (legacy)', async () => {
+        let count = 0;
+        const spy = jest.fn();
+        async function tester() {
+            spy();
+            if (count === 3) return 42;
+            else {
+                count += 1;
+                throw new Error('fail');
+            }
         }
-    }
-    const result = await controller.repeat(tester, 3);
-    expect(spy).toHaveBeenCalledTimes(4);
-    expect(result).toBe(42);
+        const result = await controller.repeat(tester, 3);
+        expect(spy).toHaveBeenCalledTimes(4);
+        expect(result).toBe(42);
+    });
+
+    it('retries until success with options object', async () => {
+        let count = 0;
+        const spy = jest.fn();
+        async function tester() {
+            spy();
+            if (count === 3) return 42;
+            else {
+                count += 1;
+                throw new Error('fail');
+            }
+        }
+        const result = await controller.repeat({ promiseFun: tester, times: 3 });
+        expect(spy).toHaveBeenCalledTimes(4);
+        expect(result).toBe(42);
+    });
+
+    it('calls onError on each failure when using options object', async () => {
+        const error = new Error('fail');
+        let count = 0;
+        const promiseFun = jest.fn(async () => {
+            if (count++ < 2) throw error;
+            return 99;
+        });
+        const onError = jest.fn();
+
+        const result = await controller.repeat({ promiseFun, times: 5, onError });
+        expect(onError).toHaveBeenCalledTimes(2);
+        expect(onError).toHaveBeenCalledWith(error);
+        expect(result).toBe(99);
+    });
+
+    it('rejects after exhausting all retries when using options object', async () => {
+        const error = new Error('always fails');
+        const promiseFun = jest.fn(() => Promise.reject(error));
+
+        await expect(controller.repeat({ promiseFun, times: 2 })).rejects.toThrow('always fails');
+        expect(promiseFun).toHaveBeenCalledTimes(3);
+    });
+
+    it('defaults to times=1 when not provided in options object', async () => {
+        const error = new Error('fail');
+        let count = 0;
+        const promiseFun = jest.fn(async () => {
+            if (count++ < 1) throw error;
+            return 7;
+        });
+
+        const result = await controller.repeat({ promiseFun });
+        expect(promiseFun).toHaveBeenCalledTimes(2);
+        expect(result).toBe(7);
+    });
+
+    it('retries only when shouldRetry returns true', async () => {
+        const retryable = new Error('retryable');
+        const fatal = new Error('fatal');
+        let count = 0;
+        const promiseFun = jest.fn(async () => {
+            if (count++ === 0) throw retryable;
+            throw fatal;
+        });
+        const shouldRetry = jest.fn((error: Error) => error === retryable);
+
+        await expect(controller.repeat({ promiseFun, times: 5, shouldRetry })).rejects.toThrow('fatal');
+        expect(promiseFun).toHaveBeenCalledTimes(2);
+        expect(shouldRetry).toHaveBeenCalledTimes(2);
+        expect(shouldRetry).toHaveBeenNthCalledWith(1, retryable, 0);
+        expect(shouldRetry).toHaveBeenNthCalledWith(2, fatal, 1);
+    });
+
+    it('rejects immediately without retrying when shouldRetry returns false on first error', async () => {
+        const error = new Error('no retry');
+        const promiseFun = jest.fn(() => Promise.reject(error));
+        const shouldRetry = jest.fn(() => false);
+
+        await expect(controller.repeat({ promiseFun, times: 5, shouldRetry })).rejects.toThrow('no retry');
+        expect(promiseFun).toHaveBeenCalledTimes(1);
+    });
+
+    it('passes incrementing attempt number to shouldRetry', async () => {
+        const error = new Error('fail');
+        const attempts: number[] = [];
+        let count = 0;
+        const promiseFun = jest.fn(async () => {
+            if (count++ < 3) throw error;
+            return 'done';
+        });
+        const shouldRetry = jest.fn((e: Error, attempt: number) => {
+            attempts.push(attempt);
+            return true;
+        });
+
+        await controller.repeat({ promiseFun, times: 5, shouldRetry });
+        expect(attempts).toStrictEqual([0, 1, 2]);
+    });
+
+    it('waits for backoff delay between retries', async () => {
+        const error = new Error('fail');
+        let count = 0;
+        const promiseFun = jest.fn(async () => {
+            if (count++ < 2) throw error;
+            return 'done';
+        });
+        const backoff = jest.fn((attempt: number) => 100 * (attempt + 1)); // 100ms, 200ms
+        const spy = jest.fn();
+
+        controller.repeat({ promiseFun, times: 5, backoff }).then(spy);
+
+        // no backoff yet — first call fails immediately
+        await waitPromisesFinish();
+        expect(promiseFun).toHaveBeenCalledTimes(1);
+        expect(spy).not.toHaveBeenCalled();
+
+        // advance past first backoff delay (100ms)
+        jest.advanceTimersByTime(100);
+        await waitPromisesFinish();
+        expect(promiseFun).toHaveBeenCalledTimes(2);
+        expect(spy).not.toHaveBeenCalled();
+
+        // advance past second backoff delay (200ms)
+        jest.advanceTimersByTime(200);
+        await waitPromisesFinish();
+        expect(promiseFun).toHaveBeenCalledTimes(3);
+        expect(spy).toHaveBeenCalledWith('done');
+
+        expect(backoff).toHaveBeenCalledTimes(2);
+        expect(backoff).toHaveBeenNthCalledWith(1, 0);
+        expect(backoff).toHaveBeenNthCalledWith(2, 1);
+    });
+
+    it('backoff does not fire when shouldRetry rejects the error', async () => {
+        const error = new Error('fatal');
+        const promiseFun = jest.fn(() => Promise.reject(error));
+        const backoff = jest.fn(() => 1000);
+        const shouldRetry = jest.fn(() => false);
+
+        await expect(controller.repeat({ promiseFun, times: 5, backoff, shouldRetry })).rejects.toThrow('fatal');
+        expect(backoff).not.toHaveBeenCalled();
+    });
+
+    it('supports exponential backoff pattern', async () => {
+        const error = new Error('fail');
+        let count = 0;
+        const promiseFun = jest.fn(async () => {
+            if (count++ < 3) throw error;
+            return 'ok';
+        });
+        const spy = jest.fn();
+
+        controller
+            .repeat({
+                promiseFun,
+                times: 5,
+                backoff: (attempt) => Math.min(1000 * 2 ** attempt, 30_000),
+            })
+            .then(spy);
+
+        await waitPromisesFinish();
+        expect(promiseFun).toHaveBeenCalledTimes(1);
+
+        jest.advanceTimersByTime(1000); // attempt 0 → 1000ms
+        await waitPromisesFinish();
+        expect(promiseFun).toHaveBeenCalledTimes(2);
+
+        jest.advanceTimersByTime(2000); // attempt 1 → 2000ms
+        await waitPromisesFinish();
+        expect(promiseFun).toHaveBeenCalledTimes(3);
+
+        jest.advanceTimersByTime(4000); // attempt 2 → 4000ms
+        await waitPromisesFinish();
+        expect(promiseFun).toHaveBeenCalledTimes(4);
+        expect(spy).toHaveBeenCalledWith('ok');
+    });
+
+    describe('exponential()', () => {
+        it('doubles the delay with each attempt', () => {
+            const backoff = exponential(1000);
+            expect(backoff(0)).toBe(1000);
+            expect(backoff(1)).toBe(2000);
+            expect(backoff(2)).toBe(4000);
+            expect(backoff(3)).toBe(8000);
+        });
+
+        it('caps the delay at maxDelay', () => {
+            const backoff = exponential(1000, 5000);
+            expect(backoff(0)).toBe(1000);
+            expect(backoff(2)).toBe(4000);
+            expect(backoff(3)).toBe(5000); // 8000 capped to 5000
+            expect(backoff(10)).toBe(5000);
+        });
+
+        it('uses defaults: baseDelay=1000, maxDelay=30000', () => {
+            const backoff = exponential();
+            expect(backoff(0)).toBe(1000);
+            expect(backoff(4)).toBe(16000);
+            expect(backoff(5)).toBe(30000); // 32000 capped to 30000
+        });
+
+        it('works as a backoff in repeat()', async () => {
+            const error = new Error('fail');
+            let count = 0;
+            const promiseFun = jest.fn(async () => {
+                if (count++ < 2) throw error;
+                return 'ok';
+            });
+            const spy = jest.fn();
+
+            controller.repeat({ promiseFun, times: 5, backoff: exponential(500, 10_000) }).then(spy);
+
+            await waitPromisesFinish();
+            expect(promiseFun).toHaveBeenCalledTimes(1);
+
+            jest.advanceTimersByTime(500); // attempt 0 → 500ms
+            await waitPromisesFinish();
+            expect(promiseFun).toHaveBeenCalledTimes(2);
+
+            jest.advanceTimersByTime(1000); // attempt 1 → 1000ms
+            await waitPromisesFinish();
+            expect(promiseFun).toHaveBeenCalledTimes(3);
+            expect(spy).toHaveBeenCalledWith('ok');
+        });
+
+        it('is accessible via the default export', () => {
+            const backoff = controller.exponential(200, 3000);
+            expect(backoff(0)).toBe(200);
+            expect(backoff(4)).toBe(3000); // 3200 capped
+        });
+    });
+
+    describe('jitter', () => {
+        afterEach(() => {
+            jest.spyOn(Math, 'random').mockRestore();
+        });
+
+        it('full jitter: delays between 0 and the full backoff value', async () => {
+            jest.spyOn(Math, 'random').mockReturnValue(0.5);
+            // backoff(0) = 1000, full jitter with random=0.5 → delay = 0.5 * 1000 = 500ms
+            const error = new Error('fail');
+            let count = 0;
+            const promiseFun = jest.fn(async () => {
+                if (count++ < 1) throw error;
+                return 'ok';
+            });
+            const spy = jest.fn();
+
+            controller.repeat({ promiseFun, times: 3, backoff: () => 1000, jitter: 'full' }).then(spy);
+
+            await waitPromisesFinish();
+            expect(promiseFun).toHaveBeenCalledTimes(1);
+            expect(spy).not.toHaveBeenCalled();
+
+            // full backoff (1000ms) without jitter should NOT resolve yet
+            jest.advanceTimersByTime(499);
+            await waitPromisesFinish();
+            expect(spy).not.toHaveBeenCalled();
+
+            // advance to 500ms — jittered delay elapses
+            jest.advanceTimersByTime(1);
+            await waitPromisesFinish();
+            expect(promiseFun).toHaveBeenCalledTimes(2);
+            expect(spy).toHaveBeenCalledWith('ok');
+        });
+
+        it('full jitter: delays 0ms when random returns 0', async () => {
+            jest.spyOn(Math, 'random').mockReturnValue(0);
+            const error = new Error('fail');
+            let count = 0;
+            const promiseFun = jest.fn(async () => {
+                if (count++ < 1) throw error;
+                return 'ok';
+            });
+
+            // random=0 → delay = 0 * 1000 = 0ms, so next retry fires immediately
+            const result = await controller.repeat({ promiseFun, times: 3, backoff: () => 1000, jitter: 'full' });
+            expect(result).toBe('ok');
+            expect(promiseFun).toHaveBeenCalledTimes(2);
+        });
+
+        it('equal jitter: delays between backoff/2 and the full backoff value', async () => {
+            jest.spyOn(Math, 'random').mockReturnValue(0.5);
+            // backoff(0) = 1000, equal jitter with random=0.5 → delay = 500 + 0.5 * 500 = 750ms
+            const error = new Error('fail');
+            let count = 0;
+            const promiseFun = jest.fn(async () => {
+                if (count++ < 1) throw error;
+                return 'ok';
+            });
+            const spy = jest.fn();
+
+            controller.repeat({ promiseFun, times: 3, backoff: () => 1000, jitter: 'equal' }).then(spy);
+
+            await waitPromisesFinish();
+            expect(promiseFun).toHaveBeenCalledTimes(1);
+
+            jest.advanceTimersByTime(749);
+            await waitPromisesFinish();
+            expect(spy).not.toHaveBeenCalled();
+
+            jest.advanceTimersByTime(1);
+            await waitPromisesFinish();
+            expect(promiseFun).toHaveBeenCalledTimes(2);
+            expect(spy).toHaveBeenCalledWith('ok');
+        });
+
+        it('equal jitter: minimum delay is always at least backoff/2', async () => {
+            jest.spyOn(Math, 'random').mockReturnValue(0);
+            // backoff(0) = 1000, equal jitter with random=0 → delay = 500 + 0 * 500 = 500ms
+            const error = new Error('fail');
+            let count = 0;
+            const promiseFun = jest.fn(async () => {
+                if (count++ < 1) throw error;
+                return 'ok';
+            });
+            const spy = jest.fn();
+
+            controller.repeat({ promiseFun, times: 3, backoff: () => 1000, jitter: 'equal' }).then(spy);
+
+            await waitPromisesFinish();
+            jest.advanceTimersByTime(499);
+            await waitPromisesFinish();
+            expect(spy).not.toHaveBeenCalled();
+
+            jest.advanceTimersByTime(1);
+            await waitPromisesFinish();
+            expect(promiseFun).toHaveBeenCalledTimes(2);
+            expect(spy).toHaveBeenCalledWith('ok');
+        });
+
+        it('false jitter: uses exact backoff value with no randomness', async () => {
+            const randomSpy = jest.spyOn(Math, 'random');
+            const error = new Error('fail');
+            let count = 0;
+            const promiseFun = jest.fn(async () => {
+                if (count++ < 1) throw error;
+                return 'ok';
+            });
+            const spy = jest.fn();
+
+            controller.repeat({ promiseFun, times: 3, backoff: () => 1000, jitter: false }).then(spy);
+
+            await waitPromisesFinish();
+            jest.advanceTimersByTime(999);
+            await waitPromisesFinish();
+            expect(spy).not.toHaveBeenCalled();
+
+            jest.advanceTimersByTime(1);
+            await waitPromisesFinish();
+            expect(spy).toHaveBeenCalledWith('ok');
+            expect(randomSpy).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('signal', () => {
+        it('rejects immediately if signal is already aborted before repeat starts', async () => {
+            const abortController = new AbortController();
+            abortController.abort(new Error('aborted early'));
+            const promiseFun = jest.fn(() => Promise.reject(new Error('fail')));
+
+            await expect(controller.repeat({ promiseFun, times: 5, signal: abortController.signal })).rejects.toThrow(
+                'aborted early',
+            );
+            expect(promiseFun).not.toHaveBeenCalled();
+        });
+
+        it('aborts during backoff delay and rejects with abort reason', async () => {
+            const abortController = new AbortController();
+            const error = new Error('fail');
+            let count = 0;
+            const promiseFun = jest.fn(async () => {
+                if (count++ < 3) throw error;
+                return 'ok';
+            });
+            const spy = jest.fn();
+
+            controller
+                .repeat({
+                    promiseFun,
+                    times: 10,
+                    backoff: () => 1000,
+                    signal: abortController.signal,
+                })
+                .then(spy)
+                .catch(spy);
+
+            // first call fails, backoff delay starts
+            await waitPromisesFinish();
+            expect(promiseFun).toHaveBeenCalledTimes(1);
+
+            // abort while the backoff delay is in progress
+            abortController.abort(new Error('cancelled'));
+
+            await waitPromisesFinish();
+            expect(spy).toHaveBeenCalledTimes(1);
+            expect(spy.mock.calls[0][0]).toMatchObject({ message: 'cancelled' });
+            // promiseFun was not retried after abort
+            expect(promiseFun).toHaveBeenCalledTimes(1);
+        });
+
+        it('aborts after backoff delay elapses but before next retry', async () => {
+            const abortController = new AbortController();
+            const error = new Error('fail');
+            let count = 0;
+            const promiseFun = jest.fn(async () => {
+                if (count++ < 3) throw error;
+                return 'ok';
+            });
+            const spy = jest.fn();
+
+            controller
+                .repeat({
+                    promiseFun,
+                    times: 10,
+                    backoff: () => 1000,
+                    signal: abortController.signal,
+                })
+                .then(spy)
+                .catch(spy);
+
+            await waitPromisesFinish();
+            expect(promiseFun).toHaveBeenCalledTimes(1);
+
+            // let the backoff delay expire
+            jest.advanceTimersByTime(1000);
+            await waitPromisesFinish();
+            expect(promiseFun).toHaveBeenCalledTimes(2);
+
+            // abort while the second backoff delay is running
+            abortController.abort(new Error('stop now'));
+            await waitPromisesFinish();
+
+            expect(spy).toHaveBeenCalledTimes(1);
+            expect(spy.mock.calls[0][0]).toMatchObject({ message: 'stop now' });
+            expect(promiseFun).toHaveBeenCalledTimes(2);
+        });
+
+        it('resolves normally when signal is never aborted', async () => {
+            const abortController = new AbortController();
+            const error = new Error('fail');
+            let count = 0;
+            const promiseFun = jest.fn(async () => {
+                if (count++ < 2) throw error;
+                return 'done';
+            });
+
+            const result = await controller.repeat({ promiseFun, times: 5, signal: abortController.signal });
+            expect(result).toBe('done');
+            expect(promiseFun).toHaveBeenCalledTimes(3);
+        });
+    });
 });
 
 describe('random', () => {

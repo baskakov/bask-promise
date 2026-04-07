@@ -1,6 +1,18 @@
 import { deferred } from './deferred';
+export type RepeatJitter = 'full' | 'equal' | false;
+export interface RepeatOptions<T> {
+    promiseFun: () => Promise<T>;
+    times?: number;
+    onError?: (error: Error) => void;
+    shouldRetry?: (error: Error, attempt: number) => boolean;
+    backoff?: (attempt: number) => number;
+    jitter?: RepeatJitter;
+    signal?: AbortSignal;
+}
+export declare function repeat<T>(options: RepeatOptions<T>): Promise<T>;
 export declare function repeat<T>(promiseFun: () => Promise<T>, times?: number, onError?: (error: Error) => void): Promise<T>;
 export declare function delay(milliseconds: number): Promise<void>;
+export declare function exponential(baseDelay?: number, maxDelay?: number): (attempt: number) => number;
 export interface RepeatExponentialOptions<T> {
     promiseFun: () => Promise<T>;
     times?: number;
@@ -30,6 +42,7 @@ export declare function timeout<T>(promise: Promise<T>, milliseconds: number): P
 declare const _default: {
     repeat: typeof repeat;
     repeatExponential: typeof repeatExponential;
+    exponential: typeof exponential;
     delay: typeof delay;
     delayAfter: typeof delayAfter;
     delayBefore: typeof delayBefore;

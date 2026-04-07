@@ -186,6 +186,184 @@ import { repeat, delay } from 'bask-promise';
 repeat(() => repeatThisPromiseIfFails(), 3, error => delay(1000));
 ```
 
+### Options object variant
+
+All parameters can be passed as a single `RepeatOptions` object instead. This is the recommended style when specifying multiple options together, as it is more readable and self-documenting.
+
+```ts
+interface RepeatOptions<T> {
+    promiseFun: () => Promise<T>;
+    times?: number;        // default: 1
+    onError?: (error: Error) => void;
+    shouldRetry?: (error: Error, attempt: number) => boolean;
+    backoff?: (attempt: number) => number;
+    jitter?: 'full' | 'equal' | false;  // default: false
+    signal?: AbortSignal;
+}
+```
+
+Repeat up to 3 times:
+```js
+import { repeat } from 'bask-promise';
+repeat({ promiseFun: () => repeatThisPromiseIfFails(), times: 3 });
+```
+
+Repeat until success:
+```js
+repeat({ promiseFun: () => repeatThisPromiseIfFails(), times: -1 });
+```
+
+Log every error and delay after each failure:
+```js
+import { repeat, delay } from 'bask-promise';
+repeat({
+    promiseFun: () => repeatThisPromiseIfFails(),
+    times: 3,
+    onError: error => { console.error(error); return delay(1000); },
+});
+```
+
+Retry only on specific errors:
+```js
+import { repeat } from 'bask-promise';
+
+// Only retry on network errors, fail immediately on anything else
+repeat({
+    promiseFun: () => fetchData(),
+    times: 3,
+    shouldRetry: error => error instanceof NetworkError,
+});
+```
+
+Retry based on error code:
+```js
+repeat({
+    promiseFun: () => fetchData(),
+    times: 5,
+    shouldRetry: err => err.code === 'ECONNRESET',
+});
+```
+
+Use the `attempt` argument to limit retries by error type and count together:
+```js
+repeat({
+    promiseFun: () => fetchData(),
+    times: 10,
+    shouldRetry: (error, attempt) => error instanceof NetworkError && attempt < 3,
+});
+```
+
+Use `backoff` to add a delay before each retry. The function receives the current attempt number (starting at `0`) and returns a delay in milliseconds:
+
+Fixed delay between retries:
+```js
+repeat({
+    promiseFun: () => fetchData(),
+    times: 5,
+    backoff: () => 1000,
+});
+```
+
+Exponential backoff (doubles each attempt, capped at 30 seconds):
+```js
+import { repeat, exponential } from 'bask-promise';
+
+repeat({
+    promiseFun: () => fetchData(),
+    times: 10,
+    backoff: exponential(),                  // 1000ms, 2000ms, 4000ms … capped at 30000ms
+});
+```
+
+`exponential(baseDelay?, maxDelay?)` is a convenience factory for the common pattern `attempt => Math.min(baseDelay * 2 ** attempt, maxDelay)`. Both parameters are optional:
+
+| Parameter | Default | Description |
+|---|---|---|
+| `baseDelay` | `1000` | Delay for the first retry in milliseconds |
+| `maxDelay` | `30000` | Upper cap in milliseconds |
+
+```js
+exponential()           // 1000ms → 2000ms → 4000ms … → 30000ms
+exponential(500)        // 500ms  → 1000ms → 2000ms … → 30000ms
+exponential(200, 5000)  // 200ms  → 400ms  → 800ms  … → 5000ms
+```
+
+Combine `backoff` with `shouldRetry` and `onError`:
+```js
+import { repeat, exponential } from 'bask-promise';
+
+repeat({
+    promiseFun: () => fetchData(),
+    times: 5,
+    shouldRetry: error => error instanceof NetworkError,
+    backoff: exponential(1000, 30_000),
+    onError: error => console.error(`Attempt failed: ${error.message}`),
+});
+```
+
+Use `jitter` to add randomness to backoff delays, which prevents many clients from retrying in sync and hammering the server at the same time ([AWS Architecture Blog](https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/)).
+
+| Value | Behaviour |
+|---|---|
+| `false` | No jitter — exact backoff value is used (default) |
+| `'full'` | Uniformly random between `0` and the full backoff: `random(0, backoff)` |
+| `'equal'` | Keeps half the backoff, randomises the other half: `backoff/2 + random(0, backoff/2)` |
+
+`'full'` jitter — most effective at spreading load:
+```js
+import { repeat, exponential } from 'bask-promise';
+
+repeat({
+    promiseFun: () => fetchData(),
+    times: 10,
+    backoff: exponential(),
+    jitter: 'full',
+});
+```
+
+`'equal'` jitter — steadier slowdown with some spread:
+```js
+repeat({
+    promiseFun: () => fetchData(),
+    times: 10,
+    backoff: exponential(),
+    jitter: 'equal',
+});
+```
+
+`jitter` without `backoff` has no effect, since there is no delay to randomise.
+
+Pass an `AbortSignal` via `signal` to cancel the retry loop at any point. The returned promise rejects with the abort reason as soon as the signal fires — either immediately if the signal is already aborted, or mid-backoff-delay if it fires while waiting between retries.
+
+Cancel after a timeout using `AbortSignal.timeout`:
+```js
+import { repeat, exponential } from 'bask-promise';
+
+repeat({
+    promiseFun: () => fetchData(),
+    times: -1,
+    backoff: exponential(),
+    signal: AbortSignal.timeout(10_000), // give up entirely after 10 seconds
+});
+```
+
+Cancel manually with `AbortController`:
+```js
+import { repeat } from 'bask-promise';
+
+const ac = new AbortController();
+
+repeat({
+    promiseFun: () => fetchData(),
+    times: -1,
+    backoff: () => 1000,
+    signal: ac.signal,
+});
+
+// cancel from outside whenever needed
+ac.abort(new Error('user cancelled'));
+```
+
 ## Repeat with exponential backoff
 
 Like `repeat`, but automatically adds an increasing delay between retries. The delay doubles after each failed attempt: `baseDelay * 2^attempt`.

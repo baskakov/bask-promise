@@ -1,21 +1,90 @@
 import { deferred } from './deferred';
 
+export type RepeatJitter = 'full' | 'equal' | false;
+
+function applyJitter(ms: number, jitter: RepeatJitter): number {
+    if (jitter === 'full') return Math.random() * ms;
+    if (jitter === 'equal') return ms / 2 + Math.random() * (ms / 2);
+    return ms;
+}
+
+export interface RepeatOptions<T> {
+    promiseFun: () => Promise<T>;
+    times?: number;
+    onError?: (error: Error) => void;
+    shouldRetry?: (error: Error, attempt: number) => boolean;
+    backoff?: (attempt: number) => number;
+    jitter?: RepeatJitter;
+    signal?: AbortSignal;
+}
+
+export function repeat<T>(options: RepeatOptions<T>): Promise<T>;
+export function repeat<T>(promiseFun: () => Promise<T>, times?: number, onError?: (error: Error) => void): Promise<T>;
 export function repeat<T>(
-    promiseFun: () => Promise<T>,
+    optionsOrFun: RepeatOptions<T> | (() => Promise<T>),
     times: number = 1,
     onError?: (error: Error) => void,
 ): Promise<T> {
-    return promiseFun().catch(async (error) => {
-        if (onError) await onError(error);
-        if (times === 0) throw error;
-        else if (times < 0) return repeat(promiseFun, times, onError);
-        else return repeat(promiseFun, times - 1, onError);
-    });
+    let promiseFun: () => Promise<T>;
+    let shouldRetry: RepeatOptions<T>['shouldRetry'];
+    let backoff: RepeatOptions<T>['backoff'];
+    let jitter: RepeatJitter = false;
+    let signal: AbortSignal | undefined;
+    if (typeof optionsOrFun === 'function') {
+        promiseFun = optionsOrFun;
+    } else {
+        promiseFun = optionsOrFun.promiseFun;
+        times = optionsOrFun.times ?? 1;
+        onError = optionsOrFun.onError;
+        shouldRetry = optionsOrFun.shouldRetry;
+        backoff = optionsOrFun.backoff;
+        jitter = optionsOrFun.jitter ?? false;
+        signal = optionsOrFun.signal;
+    }
+
+    let attempt = 0;
+    const run = (): Promise<T> =>
+        promiseFun().catch(async (error) => {
+            const currentAttempt = attempt++;
+            if (shouldRetry && !shouldRetry(error, currentAttempt)) throw error;
+            if (onError) await onError(error);
+            if (backoff) await delayAbortable(applyJitter(backoff(currentAttempt), jitter), signal);
+            if (signal?.aborted) throw signal.reason;
+            if (times === 0) throw error;
+            else if (times < 0) return run();
+            else {
+                times--;
+                return run();
+            }
+        });
+
+    if (signal?.aborted) return Promise.reject(signal.reason);
+    return run();
 }
 
 export function delay(milliseconds: number): Promise<void> {
     if (milliseconds > 0) return new Promise((resolve) => setTimeout(resolve, milliseconds));
     else return Promise.resolve();
+}
+
+function delayAbortable(milliseconds: number, signal?: AbortSignal): Promise<void> {
+    if (!signal) return delay(milliseconds);
+    if (signal.aborted) return Promise.reject(signal.reason);
+    return new Promise((resolve, reject) => {
+        const timeoutId = setTimeout(resolve, milliseconds);
+        signal.addEventListener(
+            'abort',
+            () => {
+                clearTimeout(timeoutId);
+                reject(signal.reason);
+            },
+            { once: true },
+        );
+    });
+}
+
+export function exponential(baseDelay: number = 1000, maxDelay: number = 30_000): (attempt: number) => number {
+    return (attempt) => Math.min(baseDelay * 2 ** attempt, maxDelay);
 }
 
 export interface RepeatExponentialOptions<T> {
@@ -136,6 +205,7 @@ export function timeout<T>(promise: Promise<T>, milliseconds: number): Promise<T
 export default {
     repeat,
     repeatExponential,
+    exponential,
     delay,
     delayAfter,
     delayBefore,
